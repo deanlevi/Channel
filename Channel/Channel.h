@@ -14,6 +14,9 @@ typedef struct _ChannelProperties {
 	int ErrorProbability;
 	int RandomSeed;
 
+	int TempRandomNumber;
+	int TempRandomNumberSize;
+
 	SOCKET ReceiverSocket;
 	SOCKADDR_IN ReceiverSocketService;
 

@@ -14,7 +14,6 @@
 #define BINDING_SUCCEEDED 0
 #define SEND_RECEIVE_FLAGS 0
 #define CHUNK_SIZE 8
-#define ERROR_CONST 65536 // = 2^16
 #define MESSAGE_LENGTH 20
 #define SEND_MESSAGES_WAIT 20
 
@@ -51,6 +50,11 @@ void HandleReceiveFromSender(unsigned long long ReceivedBuffer, int ReceivedBuff
 Input: ReceivedBuffer - received buffer of data from sender.
 Output: none.
 Description: insert errors to senders data by flipping each bit by given probability.
+			 for each bit a random number of 16 bits is created. if the random number is smaller than n (= ErrorProbability),
+			 meaning we hit a chance of n/2^16 -> flip bit.
+			 since rand() creates a random number of 15 bits, we used TempRandomNumber, TempRandomNumberSize to create another random
+			 number and use one random bit from it to each calculation.
+			 meaning an extra rand() for each 15 data bits (= 1.0667 rand() for each data bit).
 */
 void InsertErrors(unsigned long long *ReceivedBuffer);
 
@@ -80,6 +84,7 @@ void InitChannel(char *argv[]) {
 	srand(Channel.RandomSeed);
 	Channel.NumberOfReceivedBytes = 0;
 	Channel.NumberOfFlippedBits = 0;
+	Channel.TempRandomNumberSize = 0;
 
 	WSADATA wsaData;
 	int StartupRes = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -191,12 +196,22 @@ void InsertErrors(unsigned long long *ReceivedBuffer) { // todo check bonus
 	if (Channel.ErrorProbability == 0) {
 		return;
 	}
-	unsigned int TotalNumberOfOptionsToError = ERROR_CONST / Channel.ErrorProbability;
+	int RandomNumber;
+
 	int IndexInBuffer = 0;
 	unsigned long long ErrorMask = 0;
 	int NumberOfErrors = 0;
 	for (; IndexInBuffer < (CHUNK_SIZE * 8); IndexInBuffer++) {
-		if ((rand() % TotalNumberOfOptionsToError) == 1) {
+		RandomNumber = rand(); // 15 bit random number
+		if (Channel.TempRandomNumberSize == 0) { // if need to create another extra random number
+			Channel.TempRandomNumber = rand();
+			Channel.TempRandomNumberSize = 15;
+		}
+		RandomNumber = RandomNumber * 2 + (Channel.TempRandomNumber & 1); // 16 bit random number, take LSB of Channel.TempRandomNumber
+		Channel.TempRandomNumber = Channel.TempRandomNumber / 2; // remove used random bit
+		Channel.TempRandomNumberSize--; // update size of Channel.TempRandomNumber
+
+		if (RandomNumber < Channel.ErrorProbability) { // if we hit 0...n - 1 = n options out of 2^16
 			ErrorMask += 1;
 			NumberOfErrors++;
 		}
